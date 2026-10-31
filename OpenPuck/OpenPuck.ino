@@ -170,6 +170,7 @@ void setup()
 	// decide USB presentation BEFORE registering interfaces
 	g_xbox = !modeIsPuck(g_usbMode);
 	g_active = controllerFor(g_usbMode);
+	ledShowMode();
 
 	// ---- USB descriptor rebuild ----
 	// Puck mode drops the CDC serial console (clearConfiguration) to free a USB endpoint for the wake-mouse

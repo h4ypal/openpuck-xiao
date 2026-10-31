@@ -91,6 +91,9 @@ The easiest way to install is to grab a uf2 file from the GitHub releases and dr
 
 See [build instructions document](./docs/BUILD_AND_DEPLOY.md) for  details on how to flash the MCU during development.
 
+> [!NOTE]
+> **This fork adds Seeed XIAO nRF52840 support** (branch `xiao-nrf52840`). XIAO images are linked at `0x27000` and are not interchangeable with the Pro Micro `.uf2`s from upstream releases. Grab `OpenPuck-*-xiao-standard.uf2` from this fork's **Actions → Build** artifacts (or `make uf2-xiao`), double-tap RST, and drop it on the `XIAO-SENSE` drive. Details, LED colors and caveats: [BUILD_AND_DEPLOY.md §4b](./docs/BUILD_AND_DEPLOY.md#4b-seeed-xiao-nrf52840-and-xiao-nrf52840-sense).
+
 # Pairing
 Both OpenPuck and the controller need to be hooked up to the same machine with a data capable USB C cable at the same time and Steam must be running. Steam should in most cases automatically pop up a menu to pair the controller. If not, you can go to Settings -> Controllers and press "Add Controller".
 

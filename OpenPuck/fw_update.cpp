@@ -11,7 +11,15 @@
 // 0x26000-0xED000, internal LittleFS 0xED000-0xF4000, bootloader 0xF4000+, its settings page at 0xFF000.
 // We manage the TOP of the app region: the meta/commit page at 0xEC000 and the staged image right below it,
 // growing downward. Nothing outside [APP_BASE, 0xED000) is ever written except FWUP_BL_SETTINGS (see apply).
+//
+// The Seeed XIAO's bootloader ships S140 v7.3.0, which is 4 KiB larger, so its app region starts at
+// 0x27000. This cannot be read at runtime: with the SoftDevice present but never enabled, the MBR forwards
+// interrupts through a RAM word and SCB->VTOR stays 0.
+#if defined(ARDUINO_XIAO_NRF52840)
+#define FWUP_APP_BASE 0x27000UL
+#else
 #define FWUP_APP_BASE 0x26000UL
+#endif
 #define FWUP_APP_END 0xED000UL
 #define FWUP_META 0xEC000UL
 // internal LittleFS (cfg.bin + bonds.bin) sits between the app region and the bootloader; wiped whole by the
@@ -25,7 +33,12 @@
 // journal end (0x88000) and staging. This keeps both update source and target
 // disjoint from learned RF history.
 #define FWUP_MAX_IMG (RF_CHANNEL_JOURNAL_BASE - FWUP_APP_BASE)
-static_assert(FWUP_MAX_IMG == 0x60000UL,
+#if defined(ARDUINO_XIAO_NRF52840)
+#define FWUP_EXPECTED_MAX_IMG 0x5F000UL
+#else
+#define FWUP_EXPECTED_MAX_IMG 0x60000UL
+#endif
+static_assert(FWUP_MAX_IMG == FWUP_EXPECTED_MAX_IMG,
 	      "RF journal layout changed the WebUSB application cap");
 static_assert(RF_CHANNEL_JOURNAL_END <=
 		      ((FWUP_META - FWUP_MAX_IMG) & ~(FWUP_PAGE - 1UL)),
@@ -36,6 +49,24 @@ static_assert(RF_CHANNEL_JOURNAL_END <=
 // drag-and-drop -- the panel warns before letting that happen. Bump the suffix only on a breaking protocol
 // change (the panel searches for this exact value). The asm reference below keeps it through --gc-sections.
 static const char FWUP_TAG[] = "OPK-FWUP-v1";
+
+#if defined(ARDUINO_XIAO_NRF52840)
+// Pro Micro images are linked 4 KiB lower, but their reset vector still lands
+// inside this board's app range, so vectorsPlausible() can't tell them apart.
+// Only images that carry this tag (i.e. XIAO builds) may be armed here.
+static const char FWUP_BOARD_TAG[] = "OPK-BOARD-XIAO-27000";
+
+static bool imageHasBoardTag(uint32_t imgAddr, uint32_t size)
+{
+	const uint32_t n = sizeof FWUP_BOARD_TAG - 1;
+	const uint8_t *p = (const uint8_t *)imgAddr;
+
+	for (uint32_t i = 0; i + n <= size; i++)
+		if (p[i] == 'O' && memcmp(p + i, FWUP_BOARD_TAG, n) == 0)
+			return true;
+	return false;
+}
+#endif
 
 #define FWUP_META_MAGIC 0x32465055UL // "UPF2"
 // Full-board-wipe arm marker, written to the meta page instead of a FwupMeta. Distinct magic + its bitwise
@@ -205,6 +236,10 @@ uint8_t fwupEnd(void)
 		return FWUP_ERR_CRC;
 	if (!vectorsPlausible(s_base, s_size))
 		return FWUP_ERR_VECTOR;
+#if defined(ARDUINO_XIAO_NRF52840)
+	if (!imageHasBoardTag(s_base, s_size))
+		return FWUP_ERR_VECTOR;
+#endif
 	// COMMIT: this meta page write is the single arming action of the whole protocol
 	FwupMeta m = { FWUP_META_MAGIC, s_size, s_crc, s_base, 0 };
 	m.metaCrc = ~crc32Step(0xFFFFFFFFUL, (const uint8_t *)&m, 16);
@@ -357,6 +392,9 @@ void fwupApplyIfArmed(void)
 {
 	// materialize a reference to the capability tag so the linker's --gc-sections keeps it in the image
 	__asm volatile("" ::"r"(FWUP_TAG));
+#if defined(ARDUINO_XIAO_NRF52840)
+	__asm volatile("" ::"r"(FWUP_BOARD_TAG));
+#endif
 	const volatile FwupMeta *m = (const volatile FwupMeta *)FWUP_META;
 	if (m->magic != FWUP_META_MAGIC)
 		return; // erased page (0xFFFFFFFF) = nothing armed: the common path, zero boot cost

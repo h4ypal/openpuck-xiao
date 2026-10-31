@@ -13,6 +13,12 @@
 // directly to the nRF's GPIO. This module only knows how to drive one pin; the isolation is on you.
 #pragma once
 
+// On the XIAO, Arduino pin 29 is the onboard QSPI flash's IO3 line; use the
+// D0 header pad (P0.02) instead.
+#if defined(ARDUINO_XIAO_NRF52840) && !defined(PWR_SWITCH_PIN)
+#define PWR_SWITCH_PIN 0
+#endif
+
 #ifndef PWR_SWITCH_PIN
 // Arduino pin number for physical P0.17 ("017" on this SuperMini clone's silkscreen) under the
 // Adafruit Feather core this builds against (variants/feather_nrf52840_express/variant.cpp:

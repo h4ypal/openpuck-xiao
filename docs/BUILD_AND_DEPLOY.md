@@ -188,6 +188,40 @@ build; use the physical Open DFU workflow above instead. The panel's factory
 erase (§6, filesystem-only) and the serial `ERASE-ALL` console command work
 normally.
 
+### 4b. Seeed XIAO nRF52840 (and XIAO nRF52840 Sense)
+
+The XIAO builds against the **same Adafruit nRF52 core** as above, through a small in-repo platform
+(`arduino/hardware/openpuck/nrf52/`). Don't install the Seeeduino core or swap TinyUSB versions. The only
+difference is the link address: the XIAO's bootloader ships SoftDevice S140 v7.3.0 and starts the app at
+`0x27000`, where Pro Micro boards (S140 v6.1.1) use `0x26000`. Needs arduino-cli 1.0.4 or newer.
+
+```sh
+make uf2-xiao              # -> build/openpuck-xiao/OpenPuck.ino.uf2
+make build-xiao            # compile only
+make build-xiao-recovery   # one-time factory-reset image (§6)
+make deploy-xiao COM7      # build + upload over serial
+```
+
+Or skip the toolchain: every push to this fork's `xiao-nrf52840` branch runs the **Build** workflow on
+GitHub Actions, which uploads an `OpenPuck-*-xiao-standard.uf2` artifact.
+
+To flash, double-tap **RST** (the tiny button next to the USB-C port) to mount the `XIAO-SENSE` /
+`XIAO-BOOT` drive, then copy the `.uf2` onto it.
+
+XIAO-specific behavior:
+
+- **Never cross-flash.** A Pro Micro image won't boot on the XIAO and vice versa. The board just comes
+  back up in its bootloader; double-tap RST and flash the right file.
+- **Update by drag-and-drop, not the panel's Firmware update tab.** The upstream panel only accepts
+  `0x26000` images and its releases list offers Pro Micro builds. The XIAO firmware refuses to arm any
+  staged image that lacks its XIAO board tag, so a mistaken panel update fails safely and does nothing.
+  The panel's other settings work normally.
+- The RGB LED shows the current mode: white = Steam/Lizard, green = Xbox, red = Switch, blue =
+  PlayStation, yellow = DirectInput, magenta = SInput. Build with `EXTRA_FLAGS="-DOPK_MODE_LED=0"` to keep
+  it dark except for the wake flash.
+- ColdBoot (`-DOPK_PWR_SWITCH=1`) drives the **D0** pad, because the Pro Micro's pin 29 is the onboard
+  QSPI flash on the XIAO.
+
 ## 5. Upload the firmware
 
 The quickest path is `make`. The serial port is a **required argument** (find it with `arduino-cli board list`):

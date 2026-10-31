@@ -4,10 +4,12 @@ on:
   push:
     branches:
       - main
+      - xiao-nrf52840
     tags:
       - '[0-9]*.[0-9]*.[0-9]*'
   # Build every PR head commit and publish UF2 artifacts for reviewers.
   pull_request:
+  workflow_dispatch:
 
 concurrency:
   group: build-${{ github.event.pull_request.number || github.ref }}
@@ -100,6 +102,36 @@ jobs:
         # a drag-and-drop .uf2 ourselves.
         run: ./gen_uf2.sh build/openpuck/OpenPuck.ino.hex build/openpuck/OpenPuck.ino.uf2
 
+      - name: Compile + UF2 OpenPuck (Seeed XIAO nRF52840)
+        run: make uf2-xiao
+
+      - name: Assert UF2 link addresses (Pro Micro 0x26000, XIAO 0x27000)
+        # A cross-linked image leaves the board app-less until UF2-DFU recovery.
+        run: |
+          python3 - <<'PY'
+          import struct, sys
+          checks = [("build/openpuck/OpenPuck.ino.uf2", 0x26000),
+                    ("build/openpuck-xiao/OpenPuck.ino.uf2", 0x27000)]
+          def payload(path):
+              raw = open(path, 'rb').read()
+              blocks = (raw[i:i + 512] for i in range(0, len(raw), 512))
+              return b"".join(b[32:32 + struct.unpack_from('<I', b, 16)[0]] for b in blocks)
+          bad = []
+          for path, want in checks:
+              got = struct.unpack_from('<I', open(path, 'rb').read(32), 12)[0]
+              print("%s: 0x%X (want 0x%X)" % (path, got, want))
+              if got != want:
+                  bad.append("%s is 0x%X" % (path, got))
+          # the XIAO updater only arms images carrying this tag (fw_update.cpp)
+          tag = b"OPK-BOARD-XIAO-27000"
+          if tag not in payload("build/openpuck-xiao/OpenPuck.ino.uf2"):
+              bad.append("XIAO image is missing its board tag")
+          if tag in payload("build/openpuck/OpenPuck.ino.uf2"):
+              bad.append("Pro Micro image carries the XIAO board tag")
+          if bad:
+              sys.exit("link-address mismatch: " + "; ".join(bad))
+          PY
+
       - name: Compile ReversePuckFirmware
         run: |
           mkdir -p build/reversepuck build/cache/reversepuck
@@ -110,7 +142,7 @@ jobs:
 
       - name: List build outputs
         run: |
-          find build/openpuck build/reversepuck -maxdepth 1 -type f -print | sort
+          find build/openpuck build/openpuck-xiao build/reversepuck -maxdepth 1 -type f -print | sort
 
       - name: Upload OpenPuck UF2 artifact
         uses: actions/upload-artifact@v7
@@ -127,6 +159,14 @@ jobs:
           retention-days: 7
           if-no-files-found: error
           path: build/openpuck/OpenPuck.ino.hex
+
+      - name: Upload OpenPuck XIAO UF2 artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: OpenPuck-${{ steps.build_version.outputs.artifact_version }}-xiao-standard.uf2
+          retention-days: 30
+          if-no-files-found: error
+          path: build/openpuck-xiao/OpenPuck.ino.uf2
 
       - name: Upload ReversePuckFirmware UF2 artifact
         uses: actions/upload-artifact@v7
