@@ -144,7 +144,8 @@ jobs:
             --build-path build/cache/xiao-blink --output-dir build/xiao-blink tools/xiao_blink
           ./gen_uf2.sh build/xiao-blink/xiao_blink.ino.hex build/xiao-blink/xiao_blink.ino.uf2
           mkdir -p build/xiao-debug
-          cp build/xiao-trace/OpenPuck.ino.uf2 build/xiao-debug/1-openpuck-boot-trace.uf2
+          python3 tools/uf2_add_erased.py build/xiao-trace/OpenPuck.ino.uf2 \
+            build/xiao-debug/1-openpuck-boot-trace.uf2 0xE6000 0x1000
           cp build/xiao-blink/xiao_blink.ino.uf2 build/xiao-debug/2-blink-test.uf2
 
       - name: Upload XIAO debug images

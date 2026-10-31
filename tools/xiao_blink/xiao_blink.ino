@@ -1,6 +1,7 @@
 // Board sanity check for the vendored XIAO platform: if this cycles red -> green -> blue and shows up as a
 // USB serial port printing "xiao_blink alive", the platform, link address and bootloader hand-off are fine.
 #include <Arduino.h>
+#include <Adafruit_TinyUSB.h>
 
 void setup()
 {

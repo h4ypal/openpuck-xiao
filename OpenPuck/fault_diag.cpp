@@ -87,6 +87,31 @@ static const char *const REASON_STR[RR_COUNT] = {
 // than an intentional reboot. The core's strong symbol is only linked to satisfy the vector table, so our own
 // strong definition takes its place. Keep this MINIMAL: we are in fault context on a possibly-corrupt stack --
 // no Serial, no allocations, just stamp and reset.
+#if OPK_BOOT_TRACE
+#include "boot_trace.h"
+
+// frame = the exception's stacked {r0-r3, r12, lr, pc, xpsr}
+extern "C" void hardFaultTrace(uint32_t *frame)
+{
+	bootTraceWrite(0xC0000000UL);
+	bootTraceWrite(frame[6]);
+	bootTraceWrite(frame[5]);
+	bootTraceWrite(SCB->CFSR);
+	NRF_POWER->GPREGRET2 = G2_FAULT;
+	NVIC_SystemReset();
+	while (1) {
+	}
+}
+
+extern "C" __attribute__((naked)) void HardFault_Handler(void)
+{
+	__asm volatile("tst lr, #4\n"
+		       "ite eq\n"
+		       "mrseq r0, msp\n"
+		       "mrsne r0, psp\n"
+		       "b hardFaultTrace\n");
+}
+#else
 extern "C" void HardFault_Handler(void)
 {
 	NRF_POWER->GPREGRET2 = G2_FAULT;
@@ -94,6 +119,7 @@ extern "C" void HardFault_Handler(void)
 	while (1) {
 	}
 }
+#endif
 
 void faultDiagArmIntentionalReset()
 {

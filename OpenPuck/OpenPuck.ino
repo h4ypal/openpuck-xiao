@@ -37,6 +37,7 @@ using namespace Adafruit_LittleFS_Namespace;
 #include "serial_console.h"
 #include "wake_hid.h"
 #include "status_led.h"
+#include "boot_trace.h"
 #include "pwr_switch.h"
 #include "usb_mount.h"
 #include "identity.h"
@@ -121,27 +122,12 @@ void modeSwitchReboot(uint8_t mode)
 	NVIC_SystemReset();
 }
 
-#if OPK_BOOT_TRACE
-// XIAO boot breadcrumbs: hold each stage's color long enough to read by eye.
-// mask bit0 = R, bit1 = G, bit2 = B; the LED is common-anode (LOW = lit).
-static void bootTrace(uint8_t mask)
-{
-	pinMode(LED_RED, OUTPUT);
-	pinMode(LED_GREEN, OUTPUT);
-	pinMode(LED_BLUE, OUTPUT);
-	digitalWrite(LED_RED, (mask & 1) ? LOW : HIGH);
-	digitalWrite(LED_GREEN, (mask & 2) ? LOW : HIGH);
-	digitalWrite(LED_BLUE, (mask & 4) ? LOW : HIGH);
-	delay(700);
-}
-#define BOOT_TRACE(mask) bootTrace(mask)
-#else
-#define BOOT_TRACE(mask)
-#endif
-
 void setup()
 {
-	BOOT_TRACE(1); // red: setup() reached
+#if OPK_BOOT_TRACE
+	bootTraceWrite(0xA0000000UL | (NRF_POWER->RESETREAS & 0xFFFFFFUL));
+#endif
+	BOOT_TRACE(1);
 	// full-board wipe (debug-only "erase everything"): if the panel armed one, this never returns -- it erases
 	// the app + config/bond + bootloader-settings flash from RAM and resets into the app-less UF2 bootloader.
 	// Checked before the staged-update apply (both use the meta page; only one can be armed at a time).
@@ -156,7 +142,7 @@ void setup()
 #endif
 	genSerial();
 	ledInit();
-	BOOT_TRACE(3); // yellow: update checks + serial + LED init done
+	BOOT_TRACE(2);
 #if OPK_PWR_SWITCH
 	pwrSwitchInit();
 #endif
@@ -165,18 +151,18 @@ void setup()
 	for (int s = 0; s < NSLOT; s++)
 		rfGenSessionAddr(s);
 	InternalFS.begin();
-	BOOT_TRACE(2); // green: internal filesystem mounted
+	BOOT_TRACE(3);
 #if OPK_FACTORY_RESET
 	// Recovery build (-DOPK_FACTORY_RESET=1): wipe ALL persistent storage ONCE on the first boot after flashing,
 	// then persist normally (tracked by a git-hash tag so it does NOT wipe every boot). See config.h / config.cpp.
 	factoryResetOnce(OPK_GIT_HASH);
 #endif
 	loadCfg();
-	BOOT_TRACE(6); // cyan: config loaded
+	BOOT_TRACE(4);
 	rfApplyStartupLastGoodChannel();
-	BOOT_TRACE(4); // blue: RF journal read
+	BOOT_TRACE(5);
 	loadBonds();
-	BOOT_TRACE(5); // magenta: bonds loaded
+	BOOT_TRACE(6);
 	// Lizard (desktop) keyboard/mouse binding table. Custom remapping applies ONLY in pure
 	// MODE_LIZARD: there we install the user's saved/editable map. In every other mode the
 	// seamless lizard (Steam mode with Steam closed) uses the built-in DEFAULT map, so edits
@@ -195,6 +181,7 @@ void setup()
 	g_xbox = !modeIsPuck(g_usbMode);
 	g_active = controllerFor(g_usbMode);
 	ledShowMode();
+	BOOT_TRACE(7);
 
 	// ---- USB descriptor rebuild ----
 	// Puck mode drops the CDC serial console (clearConfiguration) to free a USB endpoint for the wake-mouse
@@ -353,11 +340,7 @@ void setup()
 	// Flash black box: at ~6s of loop stall (2s before the WDT reset) dump both tasks' stacked PCs + vitals
 	// to a reserved flash page -- the post-mortem channel that survives even the boards that wipe .noinit.
 	faultDiagBlackBoxArm();
-#if OPK_BOOT_TRACE
-	// dark blink: setup() finished, USB is up
-	bootTrace(0);
-	ledShowMode();
-#endif
+	BOOT_TRACE(9);
 }
 
 // loop-timing diagnostics: poll rate is capped by loop ITERATION time (pacing wants 4000us but the poll only
@@ -374,6 +357,11 @@ void loop()
 {
 	// feed the watchdog; if we ever stop, the ~8s WDT auto-resets us
 	NRF_WDT->RR[0] = WDT_RR_RR_Reload;
+#if OPK_BOOT_TRACE
+	static uint32_t traceLoops = 0;
+	if (traceLoops < 2000 && ++traceLoops == 2000)
+		BOOT_TRACE(10);
+#endif
 	faultDiagBeat(); // loop heartbeat -- the SOF blob reports ms-since-beat so a wedge is visible live
 	faultDiagStackTick(); // per-task stack headroom (self-gated ~1Hz) -- usbd-overflow hypothesis check
 	faultDiagFlightTick(); // flight recorder: refresh vitals + heartbeat crumb + live CDC vitals line
