@@ -121,8 +121,27 @@ void modeSwitchReboot(uint8_t mode)
 	NVIC_SystemReset();
 }
 
+#if OPK_BOOT_TRACE
+// XIAO boot breadcrumbs: hold each stage's color long enough to read by eye.
+// mask bit0 = R, bit1 = G, bit2 = B; the LED is common-anode (LOW = lit).
+static void bootTrace(uint8_t mask)
+{
+	pinMode(LED_RED, OUTPUT);
+	pinMode(LED_GREEN, OUTPUT);
+	pinMode(LED_BLUE, OUTPUT);
+	digitalWrite(LED_RED, (mask & 1) ? LOW : HIGH);
+	digitalWrite(LED_GREEN, (mask & 2) ? LOW : HIGH);
+	digitalWrite(LED_BLUE, (mask & 4) ? LOW : HIGH);
+	delay(700);
+}
+#define BOOT_TRACE(mask) bootTrace(mask)
+#else
+#define BOOT_TRACE(mask)
+#endif
+
 void setup()
 {
+	BOOT_TRACE(1); // red: setup() reached
 	// full-board wipe (debug-only "erase everything"): if the panel armed one, this never returns -- it erases
 	// the app + config/bond + bootloader-settings flash from RAM and resets into the app-less UF2 bootloader.
 	// Checked before the staged-update apply (both use the meta page; only one can be armed at a time).
@@ -137,6 +156,7 @@ void setup()
 #endif
 	genSerial();
 	ledInit();
+	BOOT_TRACE(3); // yellow: update checks + serial + LED init done
 #if OPK_PWR_SWITCH
 	pwrSwitchInit();
 #endif
@@ -145,14 +165,18 @@ void setup()
 	for (int s = 0; s < NSLOT; s++)
 		rfGenSessionAddr(s);
 	InternalFS.begin();
+	BOOT_TRACE(2); // green: internal filesystem mounted
 #if OPK_FACTORY_RESET
 	// Recovery build (-DOPK_FACTORY_RESET=1): wipe ALL persistent storage ONCE on the first boot after flashing,
 	// then persist normally (tracked by a git-hash tag so it does NOT wipe every boot). See config.h / config.cpp.
 	factoryResetOnce(OPK_GIT_HASH);
 #endif
 	loadCfg();
+	BOOT_TRACE(6); // cyan: config loaded
 	rfApplyStartupLastGoodChannel();
+	BOOT_TRACE(4); // blue: RF journal read
 	loadBonds();
+	BOOT_TRACE(5); // magenta: bonds loaded
 	// Lizard (desktop) keyboard/mouse binding table. Custom remapping applies ONLY in pure
 	// MODE_LIZARD: there we install the user's saved/editable map. In every other mode the
 	// seamless lizard (Steam mode with Steam closed) uses the built-in DEFAULT map, so edits
@@ -329,6 +353,11 @@ void setup()
 	// Flash black box: at ~6s of loop stall (2s before the WDT reset) dump both tasks' stacked PCs + vitals
 	// to a reserved flash page -- the post-mortem channel that survives even the boards that wipe .noinit.
 	faultDiagBlackBoxArm();
+#if OPK_BOOT_TRACE
+	// dark blink: setup() finished, USB is up
+	bootTrace(0);
+	ledShowMode();
+#endif
 }
 
 // loop-timing diagnostics: poll rate is capped by loop ITERATION time (pacing wants 4000us but the poll only

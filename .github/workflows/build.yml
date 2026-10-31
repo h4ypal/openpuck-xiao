@@ -5,6 +5,7 @@ on:
     branches:
       - main
       - xiao-nrf52840
+      - xiao-debug
     tags:
       - '[0-9]*.[0-9]*.[0-9]*'
   # Build every PR head commit and publish UF2 artifacts for reviewers.
@@ -131,6 +132,28 @@ jobs:
           if bad:
               sys.exit("link-address mismatch: " + "; ".join(bad))
           PY
+
+      - name: XIAO debug images (boot trace + blink test)
+        env:
+          ARDUINO_DIRECTORIES_USER: ${{ github.workspace }}/arduino
+        run: |
+          make uf2-xiao EXTRA_FLAGS="-DOPK_BOOT_TRACE=1" \
+            XIAO_UF2_BUILD_PATH=build/cache/xiao-trace XIAO_UF2_OUTPUT_DIR=build/xiao-trace
+          mkdir -p build/xiao-blink build/cache/xiao-blink
+          arduino-cli compile --clean -b openpuck:nrf52:xiao_nrf52840 \
+            --build-path build/cache/xiao-blink --output-dir build/xiao-blink tools/xiao_blink
+          ./gen_uf2.sh build/xiao-blink/xiao_blink.ino.hex build/xiao-blink/xiao_blink.ino.uf2
+          mkdir -p build/xiao-debug
+          cp build/xiao-trace/OpenPuck.ino.uf2 build/xiao-debug/1-openpuck-boot-trace.uf2
+          cp build/xiao-blink/xiao_blink.ino.uf2 build/xiao-debug/2-blink-test.uf2
+
+      - name: Upload XIAO debug images
+        uses: actions/upload-artifact@v7
+        with:
+          name: xiao-debug-images
+          retention-days: 30
+          if-no-files-found: error
+          path: build/xiao-debug/*.uf2
 
       - name: Compile ReversePuckFirmware
         run: |
