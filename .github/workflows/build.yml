@@ -147,6 +147,10 @@ jobs:
           python3 tools/uf2_add_erased.py build/xiao-trace/OpenPuck.ino.uf2 \
             build/xiao-debug/1-openpuck-boot-trace.uf2 0xE6000 0x1000
           cp build/xiao-blink/xiao_blink.ino.uf2 build/xiao-debug/2-blink-test.uf2
+          mkdir -p build/xiao-sdprobe build/cache/xiao-sdprobe
+          arduino-cli compile --clean -b openpuck:nrf52:xiao_nrf52840 \
+            --build-path build/cache/xiao-sdprobe --output-dir build/xiao-sdprobe tools/xiao_sdprobe
+          ./gen_uf2.sh build/xiao-sdprobe/xiao_sdprobe.ino.hex build/xiao-debug/3-sd-probe.uf2
 
       - name: XIAO trace build symbol map
         run: |
