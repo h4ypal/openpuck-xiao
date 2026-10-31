@@ -148,6 +148,18 @@ jobs:
             build/xiao-debug/1-openpuck-boot-trace.uf2 0xE6000 0x1000
           cp build/xiao-blink/xiao_blink.ino.uf2 build/xiao-debug/2-blink-test.uf2
 
+      - name: XIAO trace build symbol map
+        run: |
+          BIN="$(dirname "$(find ~/.arduino15/packages/adafruit/tools/arm-none-eabi-gcc -name arm-none-eabi-nm | head -n1)")"
+          ELF=build/xiao-trace/OpenPuck.ino.elf
+          "$BIN/arm-none-eabi-size" -A "$ELF" | grep -E 'isr|text|data|bss|noinit|svc|fs_data|heap|stack'
+          echo "--- RAM symbols 0x20006000..0x20007400"
+          "$BIN/arm-none-eabi-nm" -n -S -C "$ELF" | awk '{a=strtonum("0x"$1)} a>=0x20006000 && a<0x20007400'
+          echo "--- vector table"
+          "$BIN/arm-none-eabi-objdump" -s -j .isr_vector "$ELF" | head -n 8
+          echo "--- who references sd_softdevice_is_enabled"
+          "$BIN/arm-none-eabi-objdump" -d -C "$ELF" | grep -B3 -A1 'svc.*18' | head -n 60
+
       - name: Upload XIAO debug images
         uses: actions/upload-artifact@v7
         with:
