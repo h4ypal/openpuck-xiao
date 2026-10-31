@@ -74,6 +74,10 @@ UPLOAD = arduino-cli upload -b $(FQBN) -p "$(FLASH_PORT)" OpenPuck
 # core but links the app at 0x27000 for the XIAO's S140 v7 bootloader.
 FQBN_XIAO ?= openpuck:nrf52:xiao_nrf52840
 XIAO_UPLOAD = arduino-cli upload -b $(FQBN_XIAO) -p "$(FLASH_PORT)" OpenPuck
+# S140 v7 HardFaults on sd_flash_* while the SoftDevice is disabled; route the
+# core's InternalFS flash driver to the NVMC versions in OpenPuck/xiao_flash.cpp.
+XIAO_LINK_FLAGS = -Wl,--wrap=flash_nrf5x_write -Wl,--wrap=flash_nrf5x_read \
+	-Wl,--wrap=flash_nrf5x_flush -Wl,--wrap=flash_nrf5x_erase
 XIAO_UF2_BUILD_PATH ?= build/cache/openpuck-xiao
 XIAO_UF2_OUTPUT_DIR ?= build/openpuck-xiao
 
@@ -188,7 +192,8 @@ deploy:
 
 ## Compile OpenPuck for the Seeed XIAO nRF52840 (app @ 0x27000). Same overrides as `build`.
 build-xiao:
-	$(MAKE) build FQBN=$(FQBN_XIAO) BUILD_PATH=$(BUILD_PATH) OUTPUT_DIR=$(OUTPUT_DIR) EXTRA_FLAGS="$(EXTRA_FLAGS)"
+	$(MAKE) build FQBN=$(FQBN_XIAO) BUILD_PATH=$(BUILD_PATH) OUTPUT_DIR=$(OUTPUT_DIR) EXTRA_FLAGS="$(EXTRA_FLAGS)" \
+		OPENPUCK_LINK_FLAGS="$(OPENPUCK_LINK_FLAGS) $(XIAO_LINK_FLAGS)"
 
 ## One-time factory-reset XIAO image (wipes persistent storage once on first boot).
 build-xiao-recovery:
